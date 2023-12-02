@@ -326,7 +326,7 @@ class MessagePassing(torch.nn.Module):
 
                 if isinstance(data, Tensor):
                     self._set_size(size, dim, data)
-                    data = self._lift(data, edge_index, dim)
+                    data = self._lift(data, edge_index, dim) # 根据edge_index获取每条边传递过来的向量值
 
                 out[arg] = data
 
@@ -452,15 +452,17 @@ class MessagePassing(torch.nn.Module):
                     for arg in decomp_args:
                         kwargs[arg] = decomp_kwargs[arg][i]
 
-                coll_dict = self._collect(self._user_args, edge_index, size,
-                                          kwargs)
+                # 获取计算输出值所需的值
+                # x_j：每条边传递过来的向量值
+                # edge_weight：每条边的权重
+                coll_dict = self._collect(self._user_args, edge_index, size, kwargs)
 
-                msg_kwargs = self.inspector.distribute('message', coll_dict)
+                msg_kwargs = self.inspector.distribute('message', coll_dict) # 过滤不需要的值
                 for hook in self._message_forward_pre_hooks.values():
                     res = hook(self, (msg_kwargs, ))
                     if res is not None:
                         msg_kwargs = res[0] if isinstance(res, tuple) else res
-                out = self.message(**msg_kwargs)
+                out = self.message(**msg_kwargs) # 根据x_j和edge_weight计算每条边的输出值
                 for hook in self._message_forward_hooks.values():
                     res = hook(self, (msg_kwargs, ), out)
                     if res is not None:
@@ -477,7 +479,7 @@ class MessagePassing(torch.nn.Module):
                     if res is not None:
                         aggr_kwargs = res[0] if isinstance(res, tuple) else res
 
-                out = self.aggregate(out, **aggr_kwargs)
+                out = self.aggregate(out, **aggr_kwargs) # 根据每条边的输出值聚合每个节点的输出值
 
                 for hook in self._aggregate_forward_hooks.values():
                     res = hook(self, (aggr_kwargs, ), out)
@@ -588,8 +590,7 @@ class MessagePassing(torch.nn.Module):
         size[self.node_dim] = -1
         return inputs * edge_mask.view(size)
 
-    def aggregate(self, inputs: Tensor, index: Tensor,
-                  ptr: Optional[Tensor] = None,
+    def aggregate(self, inputs: Tensor, index: Tensor, ptr: Optional[Tensor] = None,
                   dim_size: Optional[int] = None) -> Tensor:
         r"""Aggregates messages from neighbors as
         :math:`\bigoplus_{j \in \mathcal{N}(i)}`.
@@ -601,8 +602,7 @@ class MessagePassing(torch.nn.Module):
         :class:`~torch_geometric.nn.aggr.Aggregation` module to reduce messages
         as specified in :meth:`__init__` by the :obj:`aggr` argument.
         """
-        return self.aggr_module(inputs, index, ptr=ptr, dim_size=dim_size,
-                                dim=self.node_dim)
+        return self.aggr_module(inputs, index, ptr=ptr, dim_size=dim_size, dim=self.node_dim)
 
     def message_and_aggregate(
         self,

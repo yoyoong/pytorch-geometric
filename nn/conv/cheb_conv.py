@@ -116,24 +116,22 @@ class ChebConv(MessagePassing):
         dtype: Optional[int] = None,
         batch: OptTensor = None,
     ):
-        edge_index, edge_weight = get_laplacian(edge_index, edge_weight,
-                                                normalization, dtype,
-                                                num_nodes)
+        # 计算拉普拉斯矩阵L，edge_index为边的行列索引，edge_weight为边的值（权重）
+        edge_index, edge_weight = get_laplacian(edge_index, edge_weight, normalization, dtype, num_nodes)
         assert edge_weight is not None
 
         if lambda_max is None:
             lambda_max = 2.0 * edge_weight.max()
         elif not isinstance(lambda_max, Tensor):
-            lambda_max = torch.tensor(lambda_max, dtype=dtype,
-                                      device=edge_index.device)
+            lambda_max = torch.tensor(lambda_max, dtype=dtype, device=edge_index.device)
         assert lambda_max is not None
 
         if batch is not None and lambda_max.numel() > 1:
             lambda_max = lambda_max[batch[edge_index[0]]]
 
+        # 计算L_tilde = (2 / lambda_max) * L - I
         edge_weight = (2.0 * edge_weight) / lambda_max
         edge_weight.masked_fill_(edge_weight == float('inf'), 0)
-
         loop_mask = edge_index[0] == edge_index[1]
         edge_weight[loop_mask] -= 1
 
@@ -158,15 +156,13 @@ class ChebConv(MessagePassing):
             batch=batch,
         )
 
+        # K阶切比雪夫多项式迭代
         Tx_0 = x
-        Tx_1 = x  # Dummy.
+        Tx_1 = x  # Dummy. 虚假的初始化
         out = self.lins[0](Tx_0)
-
-        # propagate_type: (x: Tensor, norm: Tensor)
         if len(self.lins) > 1:
             Tx_1 = self.propagate(edge_index, x=x, norm=norm, size=None)
             out = out + self.lins[1](Tx_1)
-
         for lin in self.lins[2:]:
             Tx_2 = self.propagate(edge_index, x=Tx_1, norm=norm, size=None)
             Tx_2 = 2. * Tx_2 - Tx_0

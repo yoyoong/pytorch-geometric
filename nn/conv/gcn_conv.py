@@ -67,8 +67,7 @@ def gcn_norm(edge_index, edge_weight=None, num_nodes=None, improved=False,
         assert edge_index.size(0) == edge_index.size(1)
 
         if edge_index.layout == torch.sparse_csc:
-            raise NotImplementedError("Sparse CSC matrices are not yet "
-                                      "supported in 'gcn_norm'")
+            raise NotImplementedError("Sparse CSC matrices are not yet supported in 'gcn_norm'")
 
         adj_t = edge_index
         if add_self_loops:
@@ -85,22 +84,20 @@ def gcn_norm(edge_index, edge_weight=None, num_nodes=None, improved=False,
         return set_sparse_value(adj_t, value), None
 
     assert flow in ['source_to_target', 'target_to_source']
-    num_nodes = maybe_num_nodes(edge_index, num_nodes)
+    num_nodes = maybe_num_nodes(edge_index, num_nodes) # 根据edge_index和num_nodes获取真实节点数
 
-    if add_self_loops:
-        edge_index, edge_weight = add_remaining_self_loops(
-            edge_index, edge_weight, fill_value, num_nodes)
+    if add_self_loops: # 考虑自身节点，在邻接矩阵添加对角线，A_hat = A + I
+        edge_index, edge_weight = add_remaining_self_loops(edge_index, edge_weight, fill_value, num_nodes)
 
-    if edge_weight is None:
-        edge_weight = torch.ones((edge_index.size(1), ), dtype=dtype,
-                                 device=edge_index.device)
+    if edge_weight is None: # 不输入边权重，则初始化为1
+        edge_weight = torch.ones((edge_index.size(1), ), dtype=dtype, device=edge_index.device)
 
     row, col = edge_index[0], edge_index[1]
     idx = col if flow == 'source_to_target' else row
-    deg = scatter(edge_weight, idx, dim=0, dim_size=num_nodes, reduce='sum')
+    deg = scatter(edge_weight, idx, dim=0, dim_size=num_nodes, reduce='sum') # 根据列（行也可以）索引，获取度矩阵D
     deg_inv_sqrt = deg.pow_(-0.5)
-    deg_inv_sqrt.masked_fill_(deg_inv_sqrt == float('inf'), 0)
-    edge_weight = deg_inv_sqrt[row] * edge_weight * deg_inv_sqrt[col]
+    deg_inv_sqrt.masked_fill_(deg_inv_sqrt == float('inf'), 0) # 不考虑自身节点时，D求逆可能出现inf，将inf替换为0
+    edge_weight = deg_inv_sqrt[row] * edge_weight * deg_inv_sqrt[col] # 每条边的权重为两个节点度的-0.5次方的乘积乘原始边权重
 
     return edge_index, edge_weight
 
@@ -188,8 +185,8 @@ class GCNConv(MessagePassing):
         self._cached_edge_index = None
         self._cached_adj_t = None
 
-        self.lin = Linear(in_channels, out_channels, bias=False,
-                          weight_initializer='glorot')
+        # 初始化权重矩阵W
+        self.lin = Linear(in_channels, out_channels, bias=False, weight_initializer='glorot')
 
         if bias:
             self.bias = Parameter(torch.empty(out_channels))
@@ -205,8 +202,7 @@ class GCNConv(MessagePassing):
         self._cached_edge_index = None
         self._cached_adj_t = None
 
-    def forward(self, x: Tensor, edge_index: Adj,
-                edge_weight: OptTensor = None) -> Tensor:
+    def forward(self, x: Tensor, edge_index: Adj, edge_weight: OptTensor = None) -> Tensor:
 
         if isinstance(x, (tuple, list)):
             raise ValueError(f"'{self.__class__.__name__}' received a tuple "
@@ -215,12 +211,11 @@ class GCNConv(MessagePassing):
                              f"Please try other layers such as 'SAGEConv' or "
                              f"'GraphConv' instead")
 
-        if self.normalize:
+        if self.normalize: # 归一化邻接矩阵
             if isinstance(edge_index, Tensor):
                 cache = self._cached_edge_index
                 if cache is None:
-                    edge_index, edge_weight = gcn_norm(  # yapf: disable
-                        edge_index, edge_weight, x.size(self.node_dim),
+                    edge_index, edge_weight = gcn_norm(edge_index, edge_weight, x.size(self.node_dim),
                         self.improved, self.add_self_loops, self.flow, x.dtype)
                     if self.cached:
                         self._cached_edge_index = (edge_index, edge_weight)
@@ -230,19 +225,17 @@ class GCNConv(MessagePassing):
             elif isinstance(edge_index, SparseTensor):
                 cache = self._cached_adj_t
                 if cache is None:
-                    edge_index = gcn_norm(  # yapf: disable
-                        edge_index, edge_weight, x.size(self.node_dim),
+                    edge_index = gcn_norm(edge_index, edge_weight, x.size(self.node_dim),
                         self.improved, self.add_self_loops, self.flow, x.dtype)
                     if self.cached:
                         self._cached_adj_t = edge_index
                 else:
                     edge_index = cache
 
-        x = self.lin(x)
+        x = self.lin(x) # 输入向量 * 权重矩阵
 
-        # propagate_type: (x: Tensor, edge_weight: OptTensor)
-        out = self.propagate(edge_index, x=x, edge_weight=edge_weight,
-                             size=None)
+        # 根据输入向量和边权重聚合得到节点的输出向量
+        out = self.propagate(edge_index, x=x, edge_weight=edge_weight, size=None)
 
         if self.bias is not None:
             out = out + self.bias
