@@ -154,7 +154,7 @@ class MessagePassing(torch.nn.Module):
         self.inspector.inspect(self.update, pop_first=True)
         self.inspector.inspect(self.edge_update)
 
-        self._user_args = self.inspector.keys(
+        self._user_args = self.inspector.keys( # self._user_args的键名是子类重写的self.message方法中的参数名
             ['message', 'aggregate', 'update']).difference(self.special_args)
         self._fused_user_args = self.inspector.keys(
             ['message_and_aggregate', 'update']).difference(self.special_args)
@@ -419,11 +419,9 @@ class MessagePassing(torch.nn.Module):
 
         # Run "fused" message and aggregation (if applicable).
         if is_sparse(edge_index) and self.fuse and not self.explain:
-            coll_dict = self._collect(self._fused_user_args, edge_index, size,
-                                      kwargs)
+            coll_dict = self._collect(self._fused_user_args, edge_index, size, kwargs)
 
-            msg_aggr_kwargs = self.inspector.distribute(
-                'message_and_aggregate', coll_dict)
+            msg_aggr_kwargs = self.inspector.distribute( 'message_and_aggregate', coll_dict)
             for hook in self._message_and_aggregate_forward_pre_hooks.values():
                 res = hook(self, (edge_index, msg_aggr_kwargs))
                 if res is not None:
@@ -452,17 +450,16 @@ class MessagePassing(torch.nn.Module):
                     for arg in decomp_args:
                         kwargs[arg] = decomp_kwargs[arg][i]
 
-                # 获取计算输出值所需的值
-                # x_j：每条边传递过来的向量值
-                # edge_weight：每条边的权重
+                # 获取进行message/aggregate/update所需的值
                 coll_dict = self._collect(self._user_args, edge_index, size, kwargs)
 
-                msg_kwargs = self.inspector.distribute('message', coll_dict) # 过滤不需要的值
+                # 根据self.message的参数名获取进行message所需的值
+                msg_kwargs = self.inspector.distribute('message', coll_dict)
                 for hook in self._message_forward_pre_hooks.values():
                     res = hook(self, (msg_kwargs, ))
                     if res is not None:
                         msg_kwargs = res[0] if isinstance(res, tuple) else res
-                out = self.message(**msg_kwargs) # 根据x_j和edge_weight计算每条边的输出值
+                out = self.message(**msg_kwargs) # 根据结点特征和边权重计算每条边的特征
                 for hook in self._message_forward_hooks.values():
                     res = hook(self, (msg_kwargs, ), out)
                     if res is not None:
@@ -473,19 +470,19 @@ class MessagePassing(torch.nn.Module):
                         'explain_message', coll_dict)
                     out = self.explain_message(out, **explain_msg_kwargs)
 
+                # 根据self.aggregate的参数名获取进行aggregate所需的值
                 aggr_kwargs = self.inspector.distribute('aggregate', coll_dict)
                 for hook in self._aggregate_forward_pre_hooks.values():
                     res = hook(self, (aggr_kwargs, ))
                     if res is not None:
                         aggr_kwargs = res[0] if isinstance(res, tuple) else res
-
-                out = self.aggregate(out, **aggr_kwargs) # 根据每条边的输出值聚合每个节点的输出值
-
+                out = self.aggregate(out, **aggr_kwargs) # 根据每条边的特征聚合每个节点的输出值
                 for hook in self._aggregate_forward_hooks.values():
                     res = hook(self, (aggr_kwargs, ), out)
                     if res is not None:
                         out = res
 
+                # 根据self.update的参数名获取进行update所需的值
                 update_kwargs = self.inspector.distribute('update', coll_dict)
                 out = self.update(out, **update_kwargs)
 
@@ -522,8 +519,7 @@ class MessagePassing(torch.nn.Module):
 
         size = self._check_input(edge_index, size=None)
 
-        coll_dict = self._collect(self._edge_user_args, edge_index, size,
-                                  kwargs)
+        coll_dict = self._collect(self._edge_user_args, edge_index, size, kwargs)
 
         edge_kwargs = self.inspector.distribute('edge_update', coll_dict)
         out = self.edge_update(**edge_kwargs)
@@ -560,8 +556,7 @@ class MessagePassing(torch.nn.Module):
 
         self._explain = explain
         self.inspector.inspect(self.explain_message, pop_first=True)
-        self._user_args = self.inspector.keys(methods).difference(
-            self.special_args)
+        self._user_args = self.inspector.keys(methods).difference(self.special_args)
 
     def explain_message(self, inputs: Tensor, size_i: int) -> Tensor:
         # NOTE Replace this method in custom explainers per message-passing

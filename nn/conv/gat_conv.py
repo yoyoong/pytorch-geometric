@@ -112,12 +112,12 @@ class GATConv(MessagePassing):
     """
     def __init__(
         self,
-        in_channels: Union[int, Tuple[int, int]],
-        out_channels: int,
-        heads: int = 1,
+        in_channels: Union[int, Tuple[int, int]], # 输入特征
+        out_channels: int, # 输出特征
+        heads: int = 1, # 多头注意力的heads的数量
         concat: bool = True,
-        negative_slope: float = 0.2,
-        dropout: float = 0.0,
+        negative_slope: float = 0.2, # LeakyReLU的参数
+        dropout: float = 0.0, # 特征丢弃率
         add_self_loops: bool = True,
         edge_dim: Optional[int] = None,
         fill_value: Union[float, Tensor, str] = 'mean',
@@ -139,23 +139,19 @@ class GATConv(MessagePassing):
 
         # In case we are operating in bipartite graphs, we apply separate
         # transformations 'lin_src' and 'lin_dst' to source and target nodes:
-        if isinstance(in_channels, int):
-            self.lin_src = Linear(in_channels, heads * out_channels,
-                                  bias=False, weight_initializer='glorot')
+        if isinstance(in_channels, int): # 普通图
+            self.lin_src = Linear(in_channels, heads * out_channels, bias=False, weight_initializer='glorot') # W初始化
             self.lin_dst = self.lin_src
-        else:
-            self.lin_src = Linear(in_channels[0], heads * out_channels, False,
-                                  weight_initializer='glorot')
-            self.lin_dst = Linear(in_channels[1], heads * out_channels, False,
-                                  weight_initializer='glorot')
+        else: # 二向图
+            self.lin_src = Linear(in_channels[0], heads * out_channels, False, weight_initializer='glorot')
+            self.lin_dst = Linear(in_channels[1], heads * out_channels, False, weight_initializer='glorot')
 
         # The learnable parameters to compute attention coefficients:
         self.att_src = Parameter(torch.empty(1, heads, out_channels))
         self.att_dst = Parameter(torch.empty(1, heads, out_channels))
 
         if edge_dim is not None:
-            self.lin_edge = Linear(edge_dim, heads * out_channels, bias=False,
-                                   weight_initializer='glorot')
+            self.lin_edge = Linear(edge_dim, heads * out_channels, bias=False, weight_initializer='glorot')
             self.att_edge = Parameter(torch.empty(1, heads, out_channels))
         else:
             self.lin_edge = None
@@ -210,7 +206,7 @@ class GATConv(MessagePassing):
         # transform source and target node features via separate weights:
         if isinstance(x, Tensor):
             assert x.dim() == 2, "Static graphs not supported in 'GATConv'"
-            x_src = x_dst = self.lin_src(x).view(-1, H, C)
+            x_src = x_dst = self.lin_src(x).view(-1, H, C) # 计算W*h_i和W*h_j
         else:  # Tuple of source and target node features:
             x_src, x_dst = x
             assert x_src.dim() == 2, "Static graphs not supported in 'GATConv'"
@@ -220,10 +216,9 @@ class GATConv(MessagePassing):
 
         x = (x_src, x_dst)
 
-        # Next, we compute node-level attention coefficients, both for source
-        # and target nodes (if present):
-        alpha_src = (x_src * self.att_src).sum(dim=-1)
-        alpha_dst = None if x_dst is None else (x_dst * self.att_dst).sum(-1)
+        # Next, we compute node-level attention coefficients, both for source and target nodes (if present):
+        alpha_src = (x_src * self.att_src).sum(dim=-1) # 计算alpha_{i} = 
+        alpha_dst = None if x_dst is None else (x_dst * self.att_dst).sum(-1) # 计算alpha_{j}
         alpha = (alpha_src, alpha_dst)
 
         if self.add_self_loops:
@@ -234,8 +229,7 @@ class GATConv(MessagePassing):
                 if x_dst is not None:
                     num_nodes = min(num_nodes, x_dst.size(0))
                 num_nodes = min(size) if size is not None else num_nodes
-                edge_index, edge_attr = remove_self_loops(
-                    edge_index, edge_attr)
+                edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
                 edge_index, edge_attr = add_self_loops(
                     edge_index, edge_attr, fill_value=self.fill_value,
                     num_nodes=num_nodes)
@@ -249,10 +243,10 @@ class GATConv(MessagePassing):
                         "'edge_index' in a 'SparseTensor' form")
 
         # edge_updater_type: (alpha: OptPairTensor, edge_attr: OptTensor)
-        alpha = self.edge_updater(edge_index, alpha=alpha, edge_attr=edge_attr)
+        alpha = self.edge_updater(edge_index, alpha=alpha, edge_attr=edge_attr) # 获得每条边的权重e_{ij}
 
         # propagate_type: (x: OptPairTensor, alpha: Tensor)
-        out = self.propagate(edge_index, x=x, alpha=alpha, size=size)
+        out = self.propagate(edge_index, x=x, alpha=alpha, size=size) # 获得每个节点的新特征
 
         if self.concat:
             out = out.view(-1, self.heads * self.out_channels)
@@ -262,7 +256,7 @@ class GATConv(MessagePassing):
         if self.bias is not None:
             out = out + self.bias
 
-        if isinstance(return_attention_weights, bool):
+        if isinstance(return_attention_weights, bool): # 返回注意力权重
             if isinstance(edge_index, Tensor):
                 if is_torch_sparse_tensor(edge_index):
                     # TODO TorchScript requires to return a tuple
@@ -280,7 +274,7 @@ class GATConv(MessagePassing):
                     size_i: Optional[int]) -> Tensor:
         # Given edge-level attention coefficients for source and target nodes,
         # we simply need to sum them up to "emulate" concatenation:
-        alpha = alpha_j if alpha_i is None else alpha_j + alpha_i
+        alpha = alpha_j if alpha_i is None else alpha_j + alpha_i # 相当于a^T * [W * h_i || W * h_j]
         if index.numel() == 0:
             return alpha
         if edge_attr is not None and self.lin_edge is not None:

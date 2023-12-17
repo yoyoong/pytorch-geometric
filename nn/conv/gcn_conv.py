@@ -242,7 +242,7 @@ class GCNConv(MessagePassing):
 
         return out
 
-    def message(self, x_j: Tensor, edge_weight: OptTensor) -> Tensor:
+    def message(self, x_j: Tensor, edge_weight: OptTensor) -> Tensor: # 这里的x_j和edge_weight指定了
         return x_j if edge_weight is None else edge_weight.view(-1, 1) * x_j
 
     def message_and_aggregate(self, adj_t: SparseTensor, x: Tensor) -> Tensor:

@@ -27,7 +27,7 @@ def kaiming_uniform(value: Any, fan: int, a: float):
             kaiming_uniform(v, fan, a)
 
 
-def glorot(value: Any):
+def glorot(value: Any): # 用Glorot初始化函数初始化输入权重
     if isinstance(value, Tensor):
         stdv = math.sqrt(6.0 / (value.size(-2) + value.size(-1)))
         value.data.uniform_(-stdv, stdv)

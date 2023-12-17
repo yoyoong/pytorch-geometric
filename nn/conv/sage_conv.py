@@ -134,7 +134,7 @@ class SAGEConv(MessagePassing):
         if self.root_weight and x_r is not None:
             out = out + self.lin_r(x_r)
 
-        if self.normalize:
+        if self.normalize: # 输出特征进行l2归一化
             out = F.normalize(out, p=2., dim=-1)
 
         return out
